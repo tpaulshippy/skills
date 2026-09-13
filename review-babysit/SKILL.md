@@ -66,6 +66,9 @@ gh pr checks <PR>
 - On any failure, fetch the failed job log and fix in the worktree:
   `gh run view <RUN_ID> --job <JOB_ID> --log-failed`, grepping past the
   runner preamble for `FAILED`, `ERROR`, or assertion lines.
+- If the PR is behind main, has merge conflicts, or CI fails on merge-related
+  causes: `git fetch origin && git merge origin/main` in the worktree,
+  resolve, re-run affected suites + lint, push.
 - Re-run the affected suites + lint locally, commit, push, and confirm
   `gh pr checks` goes green before asking for re-review.
 
