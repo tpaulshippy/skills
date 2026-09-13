@@ -1,6 +1,6 @@
 ---
-name: copilot-review-babysit
-description: Use when asked to request a Copilot code review on a GitHub pull request, babysit a PR, address review comments, or loop on Copilot feedback until clean.
+name: review-babysit
+description: Use when asked to request a code review on a GitHub pull request, babysit a PR, address review comments, or loop on feedback until clean.
 ---
 
 # Copilot Review Babysit
@@ -21,7 +21,7 @@ gh pr edit <PR> --add-reviewer @copilot
 - If the request errors or no review appears within ~3 minutes, Copilot
   code review is probably not enabled for the repo. Say so, fall back to a
   careful self-review, and note it on the PR.
-- Copilot reviews take <30s normally but allow minutes. It leaves `COMMENTED`
+- Copilot reviews take <3m normally but allow minutes. It leaves `COMMENTED`
   reviews only — never approve/request-changes, never merge-blocking.
 
 ## 2. Poll for feedback
@@ -66,21 +66,6 @@ gh pr checks <PR>
 - On any failure, fetch the failed job log and fix in the worktree:
   `gh run view <RUN_ID> --job <JOB_ID> --log-failed`, grepping past the
   runner preamble for `FAILED`, `ERROR`, or assertion lines.
-- Recurring causes in this repo and their fixes:
-  - `Conflicting migrations detected; multiple leaf nodes` — main merged a
-    migration while the PR added one. Merge `origin/main` into the PR
-    branch, then linearize: if the PR migration is unreleased, add the new
-    main leaf to its `dependencies` (no new file needed); otherwise add a
-    merge migration. Confirm with `makemigrations --check --dry-run`
-    (needs `CSRF_TRUSTED_ORIGINS=https://example.com` in this env).
-  - Shard-guard failure (`test files assigned...`) — a test file exists on
-    disk but is listed under no matrix `paths:` block in
-    `.github/workflows/lint-test.yml`. Assign it to the shard matching its
-    neighbors (e.g. API tests → shard 3 breadth) and re-run the guard's
-    `awk`/`diff` snippet locally before pushing.
-  - Remember CI runs the merge commit with latest main, so main-side
-    breakage surfaces on the PR too — verify whether a failure is yours
-    (`git show origin/main:<file>`) before changing PR code for it.
 - Re-run the affected suites + lint locally, commit, push, and confirm
   `gh pr checks` goes green before asking for re-review.
 
