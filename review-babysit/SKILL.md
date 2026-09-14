@@ -23,6 +23,11 @@ gh pr comment <PR> --body "@coderabbitai review"
 - If no review appears within a few minutes, CodeRabbit is probably not
   installed/enabled for the repo. Say so, fall back to a careful
   self-review, and note it on the PR.
+- Known gate: repos with fewer than 10 stars do NOT get automatic reviews
+  ("This repository does not receive automatic reviews because it has fewer
+  than 10 stars"). Manual `@coderabbitai review` may still work (uses one PR
+  review from allowance) — try it. If blocked, fall back to local
+  `coderabbit review` CLI + careful self-review, and note it on the PR.
 
 ## 2. Poll for feedback
 
