@@ -15,19 +15,29 @@ gh pr comment <PR> --body "@coderabbitai review"
 ```
 
 - Use `@coderabbitai review` for an incremental review of new changes,
-  `@coderabbitai full review` for a complete pass from scratch.
-- CodeRabbit auto re-reviews after each push by default
-  (`auto_incremental_review: true`), unlike Copilot. Manual trigger is
-  mainly needed when auto-review is disabled, the author is skipped, or no
-  review appears.
+  `@coderabbitai full review` for a complete pass from scratch. Each run
+  (auto or manual) uses one PR review from your rolling hourly allowance.
+- Free for OSS: every public repo gets reviews free (Team features, no card).
+  OSS limits are tight and scale with stars: 1–10 PR reviews per developer
+  per hour (rolling, additionally scoped per repo), 100–300 files/review.
+  Batch changes and trigger once when ready.
+- Eligible repos (>=10 stars, auto-review enabled): CodeRabbit auto
+  re-reviews after each push (`auto_incremental_review: true`). Manual
+  trigger is mainly needed when auto-review is disabled/paused, the author
+  is skipped, or no review appears.
+- Small repos (<10 stars): NO automatic reviews ("does not receive automatic
+  reviews because it has fewer than 10 stars"). Trigger manually after each
+  ready state: `gh pr comment` above, or the Trigger review button in the
+  CodeRabbit status comment.
 - If no review appears within a few minutes, CodeRabbit is probably not
-  installed/enabled for the repo. Say so, fall back to a careful
-  self-review, and note it on the PR.
-- Known gate: repos with fewer than 10 stars do NOT get automatic reviews
-  ("This repository does not receive automatic reviews because it has fewer
-  than 10 stars"). Manual `@coderabbitai review` may still work (uses one PR
-  review from allowance) — try it. If blocked, fall back to local
+  installed/enabled for the repo. Say so, fall back to local
   `coderabbit review` CLI + careful self-review, and note it on the PR.
+- If a manual trigger answers "Review rate limited": the rolling allowance
+  is spent. Wait for refill, avoid repeated triggers (each attempt can
+  count), use CLI + self-review meanwhile.
+- Auto pauses after several reviewed commits: `@coderabbitai resume`
+  restarts it. Incremental triggers only cover new commits since the last
+  review — they never re-hash already-reviewed commits.
 
 ## 2. Poll for feedback
 
@@ -53,9 +63,8 @@ gh api repos/{owner}/{repo}/issues/<PR>/comments \
 - Fix code + add/extend regression tests for every actionable item. If a
   comment is rejected, say why (precedent, incommensurable trade-off) in a
   thread reply and in code comments.
-- Run the affected test files plus lint; also verify `makemigrations
-  --check` if models changed (needs `CSRF_TRUSTED_ORIGINS=https://example.com`
-  in this repo's env).
+- Run the affected test files plus lint; run the repo's migration/model
+  consistency check if models changed.
 - Commit, push, then reply to each thread (`POST
   /pulls/<PR>/comments/<id>/replies`) summarizing the fix and test.
 
@@ -78,10 +87,11 @@ gh pr checks <PR>
 
 ## 5. Re-request and loop
 
-- CodeRabbit DOES auto re-review on push by default. After every push, poll
-  and wait for the fresh incremental review. Only comment
-  `gh pr comment <PR> --body "@coderabbitai review"` manually if no fresh
-  review appears.
+- Eligible repos: CodeRabbit auto re-reviews on push. After every push, poll
+  and wait for the fresh incremental review.
+- Small repos (<10 stars): no auto-review, so manually trigger once per
+  ready state (`gh pr comment <PR> --body "@coderabbitai review"`), then
+  poll. Do NOT trigger after every small push — allowance is 1–10/hr.
 - Stop when a fresh review on the current HEAD raises no new actionable
   items (or only repeats of already-addressed ones). Report the final
   review state with commit SHAs as evidence.
