@@ -4,7 +4,7 @@ Public opencode skills collection.
 
 ## Skills
 
-- `review-babysit` — Drive a GitHub PR to zero actionable Copilot feedback: request review, address every comment, re-request, repeat. See `review-babysit/SKILL.md`.
+- `review-babysit` — Drive a GitHub PR to zero actionable [cubic](https://cubic.dev) feedback (`cubic-dev-ai[bot]`): request review, address every comment, re-request, repeat. See `review-babysit/SKILL.md`.
 
 ## Usage
 
