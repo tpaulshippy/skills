@@ -8,7 +8,14 @@ description: Use when asked to request a code review on a GitHub pull request, b
 Drive a GitHub PR to zero actionable Copilot feedback: request review,
 address every comment in the PR's worktree, re-request, repeat.
 
-## 1. Request the review (documented method)
+## 1. Request the review (documented method) unless it was already requested.
+
+- Check if Copilot is already requested as a reviewer before running the command.
+  You can do this by listing current reviewers:
+
+```bash
+gh pr view <PR> --json reviewers --jq '.reviewers[].login'
+```
 
 ```bash
 gh pr edit <PR> --add-reviewer @copilot
