@@ -18,8 +18,9 @@ gh pr comment <PR> --body "@cubic-dev-ai review this PR"      # full review
 gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last completed review
 ```
 
-- A new PR is reviewed automatically within minutes. Trigger manually when
-  automatic review did not run, or to cover commits pushed after it.
+- A new PR is reviewed automatically within minutes, and later pushes are
+  re-reviewed automatically while `reviews.incremental_commits` is on. Do not
+  trigger a review for commits you pushed — wait for the automatic one.
 - `@cubic-dev-ai` on its own means a full review; `@cubic` works as a tag too.
   GitHub's @ mention autocomplete will not list it (Apps are excluded), so
   type the mention by hand — which is what `gh pr comment` does for you.
@@ -50,7 +51,13 @@ gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last compl
   `@cubic-dev-ai fix this` makes cubic push its own commits to the PR branch
   (or open a fix PR). This skill does the fixing, in the worktree, with tests.
 - Budget: usage is metered in reviewed lines per billing period. Read section 6
-  before putting full reviews in a loop.
+  before putting full reviews in a loop. cubic posts its own nudge once it
+  notices the pattern — *"You've manually re-run cubic several times on this
+  PR. Each manual re-review checks the full PR again and counts toward your
+  usage quota. To preserve your usage limits, we recommend letting cubic
+  automatically review new commits."* Treat that comment as a hard stop
+  against further triggers: let the automatic incremental review land, and use
+  the CLI (section 4, unmetered) for any remaining rechecking.
 
 ## 2. Poll for feedback
 
@@ -201,7 +208,9 @@ discounted automatically.
   repository; the quota resets with the billing period, not a rolling window.
 - Full reruns re-count the same lines; incremental reviews count only new
   changes; Ultrareviews count 3x; canceled, failed, and merge-before-finish
-  runs count nothing.
+  runs count nothing. A manual request is never free: a repeated
+  `review this PR` pays for the whole PR again, and cubic warns about this once
+  it sees a manual re-review pattern on one PR.
 - Every review is capped at 50,000 reviewable lines. `max_changed_lines` only
   lowers the automatic trigger, never the ceiling.
 - Flex capacity buys 10,000 extra lines for $20, only when a review would
@@ -213,13 +222,16 @@ discounted automatically.
 
 ## 7. Re-request and loop
 
-- Default to `@cubic-dev-ai incremental review` for the next cycle: the PR is
-  usually clean apart from your own new commits, and incremental reviews are
-  the cheap ones.
-- Escalate to a full `@cubic-dev-ai review this PR` when the incremental
+- **Default to no trigger at all.** Push your fixes and wait for the
+  push-triggered incremental review — that is what automatic review is for, and
+  it costs only the new lines. Comment only when automatic review did not run
+  (skipped for the reasons above, or `reviews.incremental_commits` off), and
+  then ask for `incremental review`, which counts new lines only.
+- Reserve a full `@cubic-dev-ai review this PR` for when the incremental
   baseline was lost (force-push with renames or binary changes, no completed
   review), the change grew a lot, or you want a whole-PR second opinion.
-  Append `ultrareview` for that final high-risk pass.
+  Append `ultrareview` for that final high-risk pass. Once per PR, not once per
+  cycle.
 - Thread replies and new pushes do not wake cubic on their own. Replying
   without the tag is treated as discussion and does not authorize cubic to
   edit code. Push your fixes, then wait for the push-triggered incremental
