@@ -5,13 +5,16 @@ description: Use when asked to request a code review on a GitHub pull request, b
 
 # cubic Review Babysit
 
-Drive a GitHub PR to zero actionable cubic feedback: request review, address
-every comment in the PR's worktree, re-request, repeat.
+Drive a GitHub PR to zero actionable cubic feedback: wait for the automatic
+review, address every comment in the PR's worktree, push, wait again, repeat.
+Manual `@cubic-dev-ai` comments are a last resort, not part of the loop.
 
 The reviewer is the `cubic-dev-ai` GitHub App, which posts as
 `cubic-dev-ai[bot]`. Docs: https://docs.cubic.dev.
 
-## 1. Request the review (documented method)
+## 1. Review triggers (automatic by default — manual is the exception)
+
+Manual trigger commands, for reference only — do not use them in the normal loop:
 
 ```bash
 gh pr comment <PR> --body "@cubic-dev-ai review this PR"      # full review
@@ -19,8 +22,17 @@ gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last compl
 ```
 
 - A new PR is reviewed automatically within minutes, and later pushes are
-  re-reviewed automatically while `reviews.incremental_commits` is on. Do not
-  trigger a review for commits you pushed — wait for the automatic one.
+  re-reviewed automatically while `reviews.incremental_commits` is on (default
+  `true`). Do not trigger a review for commits you pushed — wait for the
+  automatic one.
+- **NEVER post `@cubic-dev-ai incremental review` after your own push while
+  automatic review is on.** The push already queued an automatic incremental
+  run covering those exact commits. A manual incremental posted on top either
+  races it or lands when HEAD already equals the last reviewed commit, and
+  cubic replies `There are no new changes to review since the last completed
+  review.` — exactly the wasted comment in the screenshot. If you see that
+  reply, you triggered unnecessarily: do not retry, just wait for the next
+  push's automatic run.
 - `@cubic-dev-ai` on its own means a full review; `@cubic` works as a tag too.
   GitHub's @ mention autocomplete will not list it (Apps are excluded), so
   type the mention by hand — which is what `gh pr comment` does for you.
@@ -95,8 +107,10 @@ inline comments carry the same findings plus code context.
   confidence score out of 5 when merge confidence is enabled.
 - **Staleness:** compare each review's `commit_id` with HEAD
   (`gh pr view <PR> --json headRefOid`). A review on an older commit is
-  superseded — wait for or trigger a fresh one and judge only that. This is
-  normal: incremental reviews only ever cover the newer commits.
+  superseded — wait for the automatic run on the new HEAD to land and judge
+  only that. This is normal: incremental reviews only ever cover the newer
+  commits. Do not post a manual trigger to "freshen" a stale review while
+  automatic review is on; polling is the freshen step.
 - Unresolved threads are the real backlog. cubic auto-resolves threads it
   detects as addressed (`reviews.resolve_threads_when_addressed`, default on)
   and incremental reviews post only new issues instead of repeating old ones:
@@ -220,13 +234,23 @@ discounted automatically.
   incremental reviews, and use the CLI while iterating. Nonprofits and schools
   get 50% off — ask support.
 
-## 7. Re-request and loop
+## 7. Push, wait, and loop (no re-request)
 
-- **Default to no trigger at all.** Push your fixes and wait for the
-  push-triggered incremental review — that is what automatic review is for, and
-  it costs only the new lines. Comment only when automatic review did not run
-  (skipped for the reasons above, or `reviews.incremental_commits` off), and
-  then ask for `incremental review`, which counts new lines only.
+- **After every push, do nothing but poll.** The push-triggered incremental
+  review costs only the new lines and arrives within minutes. Poll the newest
+  cubic review (section 2) until its `commit_id` equals HEAD
+  (`gh pr view <PR> --json headRefOid`), waiting at least 5 minutes before even
+  considering that automatic review "did not run". Posting any `@cubic-dev-ai`
+  comment during this window is what produces the `There are no new changes
+  to review` reply — never do it.
+- **Manual trigger is a last resort, once per PR at most, not once per
+  cycle.** Post `incremental review` only when ALL of these hold: (a) no fresh
+  review on HEAD after the wait, (b) you verified automatic review was actually
+  skipped — PR is a draft, reviews disabled, branch/label/title/line ignore
+  matched (section 1), or `reviews.incremental_commits` is off — and (c) you
+  pushed new commits since cubic's last completed review. If HEAD already
+  equals the last reviewed commit, there is nothing to trigger, full or
+  incremental.
 - Reserve a full `@cubic-dev-ai review this PR` for when the incremental
   baseline was lost (force-push with renames or binary changes, no completed
   review), the change grew a lot, or you want a whole-PR second opinion.
