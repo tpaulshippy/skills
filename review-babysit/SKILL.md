@@ -71,7 +71,30 @@ gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last compl
   against further triggers: let the automatic incremental review land, and use
   the CLI (section 4, unmetered) for any remaining rechecking.
 
-## 2. Poll for feedback
+## 2. Poll for feedback (check run first, reviews second)
+
+The cubic **check run on HEAD is the source of truth** for every push — not
+the reviews list:
+
+```bash
+HEAD=$(gh pr view <PR> --json headRefOid -q .headRefOid)
+gh api repos/{owner}/{repo}/commits/$HEAD/check-runs \
+  --jq '.check_runs[] | select(.name | test("cubic"))
+        | {name, status, conclusion, started: .started_at,
+           completed: .completed_at, title: .output.title,
+           summary: .output.summary}'
+```
+
+- A completed `success` check with a summary like `0 issues found across
+  2 files (changes from recent commits)` **is the clean incremental verdict.**
+  cubic posts NO new summary review and NO new inline comments in that case
+  (verified on `tpaulshippy/app-builder#38` and `#36`: fix pushes got a
+  passing check, zero new reviews). Do not keep waiting for a review whose
+  `commit_id` equals HEAD — it will never come. Do not post a manual trigger
+  to "confirm" it — that is what produces the `There are no new changes to
+  review` reply.
+- A summary like `Found 5 issues across 2 files` means findings were posted —
+  only then read the newest cubic review and the inline comments:
 
 ```bash
 # newest cubic review: verdict, commit, full summary body
@@ -100,17 +123,26 @@ It reads as `<file name="..."><violation number="1" location="path:line">P2:
 text</violation></file>`. Treat that block as the authoritative work list; the
 inline comments carry the same findings plus code context.
 
-- cubic submits a **new** review on every re-review instead of editing the
-  previous one, so read `last`, not all of them. Its headline is the verdict:
-  `N issues found across M files`, `0 issues found`, or `All reported issues
-  were addressed`. Incremental runs add `(changes from recent commits)`, and a
-  confidence score out of 5 when merge confidence is enabled.
-- **Staleness:** compare each review's `commit_id` with HEAD
-  (`gh pr view <PR> --json headRefOid`). A review on an older commit is
-  superseded — wait for the automatic run on the new HEAD to land and judge
-  only that. This is normal: incremental reviews only ever cover the newer
-  commits. Do not post a manual trigger to "freshen" a stale review while
-  automatic review is on; polling is the freshen step.
+- cubic posts a summary review plus inline comments only when a run has
+  findings worth reporting. A clean incremental run is check-only: no new
+  review, no new comments. So read `last` for the verdict only when the HEAD
+  check says issues were found. Verdict headlines look like `N issues found
+  across M files`, `0 issues found`, or `All reported issues were
+  addressed`. The `(changes from recent commits)` marker for incremental runs
+  appears in the check-run summary; a confidence score out of 5 is added when
+  merge confidence is enabled.
+- **Staleness:** a review whose `commit_id` is older than HEAD is superseded —
+  but a superseded review plus a passing cubic check on HEAD means the new
+  code is clean, not that a review is missing. Judge pushes by the HEAD check
+  run (section above), not by waiting for a review on HEAD. Do not post a
+  manual trigger to "freshen" a stale review while automatic review is on;
+  polling the check is the freshen step.
+- GitHub re-anchors still-valid old comments onto HEAD after a push (same
+  `created_at`, same cubic `review-run` id, `isOutdated: false`). A familiar
+  comment showing HEAD's SHA is NOT a new finding on your new commits — check
+  `created_at` and the `<!-- cubic:review-run=... -->` marker before treating
+  anything as new. Truly new findings arrive with a new `review-run` id and a
+  `Found N issues` check summary.
 - Unresolved threads are the real backlog. cubic auto-resolves threads it
   detects as addressed (`reviews.resolve_threads_when_addressed`, default on)
   and incremental reviews post only new issues instead of repeating old ones:
@@ -236,21 +268,22 @@ discounted automatically.
 
 ## 7. Push, wait, and loop (no re-request)
 
-- **After every push, do nothing but poll.** The push-triggered incremental
-  review costs only the new lines and arrives within minutes. Poll the newest
-  cubic review (section 2) until its `commit_id` equals HEAD
-  (`gh pr view <PR> --json headRefOid`), waiting at least 5 minutes before even
-  considering that automatic review "did not run". Posting any `@cubic-dev-ai`
-  comment during this window is what produces the `There are no new changes
-  to review` reply — never do it.
+- **After every push, do nothing but poll the cubic check on HEAD**
+  (section 2). The push-triggered incremental costs only the new lines and
+  the check starts within a minute, completing in a few minutes. A
+  `completed/success` check is the verdict — a clean one posts no review at
+  all, and that silence is the pass signal, not a missing review. Wait at
+  least 5 minutes before even considering that automatic review "did not
+  run". Posting any `@cubic-dev-ai` comment during this window is what
+  produces the `There are no new changes to review` reply — never do it.
 - **Manual trigger is a last resort, once per PR at most, not once per
-  cycle.** Post `incremental review` only when ALL of these hold: (a) no fresh
-  review on HEAD after the wait, (b) you verified automatic review was actually
-  skipped — PR is a draft, reviews disabled, branch/label/title/line ignore
-  matched (section 1), or `reviews.incremental_commits` is off — and (c) you
-  pushed new commits since cubic's last completed review. If HEAD already
-  equals the last reviewed commit, there is nothing to trigger, full or
-  incremental.
+  cycle.** Post `incremental review` only when ALL of these hold: (a) no
+  cubic check run exists on HEAD after the wait, (b) you verified automatic
+  review was actually skipped — PR is a draft, reviews disabled,
+  branch/label/title/line ignore matched (section 1), or
+  `reviews.incremental_commits` is off — and (c) you pushed new commits since
+  cubic's last completed review. A completed check on HEAD — clean or not —
+  means review ran: never trigger on top of it.
 - Reserve a full `@cubic-dev-ai review this PR` for when the incremental
   baseline was lost (force-push with renames or binary changes, no completed
   review), the change grew a lot, or you want a whole-PR second opinion.
@@ -259,10 +292,11 @@ discounted automatically.
 - Thread replies and new pushes do not wake cubic on their own. Replying
   without the tag is treated as discussion and does not authorize cubic to
   edit code. Push your fixes, then wait for the push-triggered incremental
-  review when `reviews.incremental_commits` is on — otherwise post a new
-  top-level comment with the tag. Confirm the fresh review's `commit_id`
-  equals HEAD before judging it.
-- Stop when the newest review on HEAD reports `0 issues found` or
-  `All reported issues were addressed` and no unresolved cubic thread remains.
-  Report the final state with the HEAD SHA and the review SHA as evidence.
+  check when `reviews.incremental_commits` is on — otherwise post a new
+  top-level comment with the tag. Judge a push by its HEAD check run
+  (completed, `success`), never by waiting for a review on HEAD.
+- Stop when the cubic check on HEAD is `completed/success` with `0 issues
+  found` (or the newest review says `All reported issues were addressed`)
+  and no unresolved cubic thread remains. Report the final state with the
+  HEAD SHA and the check-run title/summary as evidence.
 - Never merge unless explicitly asked.
