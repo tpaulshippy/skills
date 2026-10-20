@@ -55,9 +55,9 @@ gh api repos/{owner}/{repo}/issues/<PR>/comments \
 - Fix code + add/extend regression tests for every actionable item. If a
   comment is rejected, say why (precedent, incommensurable trade-off) in a
   thread reply — Copilot accepts explicit contract changes as resolution.
-- Run the affected test files plus lint; also verify `makemigrations
-  --check` if models changed (needs `CSRF_TRUSTED_ORIGINS=https://example.com`
-  in this repo's env).
+- Run the affected test files plus lint (e.g. RSpec + RuboCop for Rails,
+  Jest + ESLint for React); if migrations changed, confirm `schema.rb` is
+  updated.
 - Commit, push, then reply to each thread (`POST
   /pulls/<PR>/comments/<id>/replies`) summarizing the fix and test.
 
