@@ -12,9 +12,11 @@ Manual `@cubic-dev-ai` comments are a last resort, not part of the loop.
 The reviewer is the `cubic-dev-ai` GitHub App, which posts as
 `cubic-dev-ai[bot]`. Docs: https://docs.cubic.dev.
 
-## 1. Review triggers (automatic by default — manual is the exception)
+## 1. Review triggers (automatic by default; manual when incremental is off)
 
-Manual trigger commands, for reference only — do not use them in the normal loop:
+Manual trigger commands — last resort when automatic review is on (section
+7A), required every cycle when `reviews.incremental_commits` is off (section
+7B):
 
 ```bash
 gh pr comment <PR> --body "@cubic-dev-ai review this PR"      # full review
@@ -221,7 +223,7 @@ gh api graphql -f query='
   consistency check if models changed. Commit, push, then reply to each thread
   summarizing the fix and the test that now covers it.
 
-## 4. Local loop with the cubic CLI (optional, unmetered)
+## 4. Local loop with the cubic CLI (unmetered — required when auto-incremental is off)
 
 ```bash
 curl -fsSL https://cubic.dev/install | bash   # macOS/Linux; npx @cubic-dev-ai/cli install -g on Windows
@@ -235,6 +237,11 @@ cubic review --base main --prompt "focus on the auth changes"
 cubic review --json | jq '.issues[]' # machine-readable; exits 1 when it finds issues
 ```
 
+- When `reviews.incremental_commits` is off (quota-conservation mode, e.g.
+  cubic warns you are near 100% of reviewed lines), this is the inner loop:
+  fix in the worktree, run `cubic review` until clean, run tests/lint, then
+  push and request ONE manual `incremental review`. CLI findings are cheap;
+  GitHub reviews are metered — never skip the CLI pass when every line counts.
 - Use it for the inner fix/recheck loop: it is fast, it loads the same
   `cubic.yaml`, custom agents and learnings as the GitHub review, and
   **CLI/local reviews do not draw from the reviewed-line pool**. The GitHub
@@ -306,7 +313,9 @@ discounted automatically.
   incremental reviews, and use the CLI while iterating. Nonprofits and schools
   get 50% off — ask support.
 
-## 7. Push, wait, and loop (no re-request)
+## 7. Push, wait, and loop
+
+### A. Automatic incremental on (default) — no re-request
 
 - **After every push, do nothing but poll the cubic check on HEAD**
   (section 2). The push-triggered incremental costs only the new lines and
@@ -337,6 +346,19 @@ discounted automatically.
   check when `reviews.incremental_commits` is on — otherwise post a new
   top-level comment with the tag. Judge a push by its HEAD check run
   (completed, `success`), never by waiting for a review on HEAD.
+
+### B. Automatic incremental off (quota-conservation mode) — CLI first, then one manual incremental per cycle
+
+- Use this when you disabled `reviews.incremental_commits` (e.g. cubic warns
+  you are at ~92% of reviewed lines) or it is off in `cubic.yaml`/dashboard.
+  Pushes start NO review — every cycle needs exactly one manual trigger.
+- Loop per cycle: (1) fix in the worktree, (2) `cubic review` until clean
+  plus tests/lint (section 4, unmetered), (3) commit and push, (4) post ONE
+  top-level `gh pr comment <PR> --body "@cubic-dev-ai incremental review"`,
+  (5) poll the HEAD check to `completed` (section 2) and address findings.
+  Never post a second comment while the check is `queued`/`in_progress` — that
+  is what produces `A review is already in progress`. Never use full
+  `review this PR` here — it re-counts the whole PR against quota.
 - Stop when the cubic check on HEAD is `completed/success` with `0 issues
   found` (or the newest review says `All reported issues were addressed`)
   and no unresolved cubic thread remains. Report the final state with the
