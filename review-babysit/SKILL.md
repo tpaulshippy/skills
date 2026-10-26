@@ -19,6 +19,7 @@ Manual trigger commands, for reference only — do not use them in the normal lo
 ```bash
 gh pr comment <PR> --body "@cubic-dev-ai review this PR"      # full review
 gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last completed review
+# equivalent: "@cubic-dev-ai review changes since the last review"
 ```
 
 - A new PR is reviewed automatically within minutes, and later pushes are
@@ -52,12 +53,15 @@ gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last compl
 - Automatic review is skipped when the PR is a draft
   (`reviews.check_drafts: false` by default), reviews are disabled for the
   repo (`reviews.enabled: false`), or the PR matches an ignore pattern
-  (`reviews.ignore.head_branches` / `base_branches` / `pr_labels` /
-  `pr_titles` / `max_changed_lines` in `cubic.yaml` or the dashboard). A manual
+  (`reviews.ignore.head_branches` / `reviews.ignore.base_branches` /
+  `reviews.ignore.pr_labels` / `reviews.ignore.pr_titles` /
+  `reviews.ignore.max_changed_lines` in `cubic.yaml` or the dashboard). A manual
   request still reviews all of those; only file ignores
   (`reviews.ignore.files`) also apply to manual reviews.
 - `reviews.incremental_commits` (default `true`) re-reviews new pushes to open
-  PRs. With it off, trigger every cycle yourself.
+  PRs. With it off, trigger every cycle yourself — except cubic still reviews
+  its own fix pushes while auto-fix is on (those count reviewed lines), and
+  manual `incremental review` works with either value.
 - Extra guidance in the same comment applies to that run only:
   `@cubic-dev-ai rerun and focus on auth edge cases`,
   `@cubic-dev-ai review this and use <docs-url>`. Durable guidance belongs in
@@ -65,9 +69,18 @@ gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last compl
   dashboard, not in a babysit comment.
 - Past ~50,000 reviewable changed lines cubic cannot review the PR at all and
   replies with the line count and the largest files. No trigger gets past that:
-  ignore generated/fixture files or split the PR.
-- `@cubic-dev-ai ultrareview` is a deeper ~30 minute pass billed at 3x the
-  reviewed-line rate. Save it for the final high-risk pass, not every cycle.
+  ignore generated/fixture files or split the PR. Docs detail: blank/absent
+  `reviews.ignore.max_changed_lines` means the 50,000 default; values up to
+  2,147,483,647 are stored but the effective ceiling stays 50,000. File
+  patterns ending in `/` behave as `dir/**`, are relative to the repo root,
+  do not match dotfiles unless explicit, and `linguist-generated=true` files
+  in `.gitattributes` are skipped entirely.
+- `@cubic-dev-ai ultrareview` is a deeper multi-pass review (usually ~9
+  minutes; settings page describes it as a deep ~30-minute pass) billed at 3x
+  the reviewed-line rate. Mode must be Manual (default) or Automatic
+  (`reviews.ultrareview`); Automatic adds file rules and a risk policy but
+  auto-triggers only fire on open/ready, never per push. Save it for the final
+  high-risk pass, not every cycle.
 - **Never ask cubic to fix anything.** "Fix with cubic" or
   `@cubic-dev-ai fix this` makes cubic push its own commits to the PR branch
   (or open a fix PR). This skill does the fixing, in the worktree, with tests.
@@ -145,8 +158,9 @@ inline comments carry the same findings plus code context.
   check says issues were found. Verdict headlines look like `N issues found
   across M files`, `0 issues found`, or `All reported issues were
   addressed`. The `(changes from recent commits)` marker for incremental runs
-  appears in the check-run summary; a confidence score out of 5 is added when
-  merge confidence is enabled.
+  appears in the check-run summary; a 1–5 merge-confidence score is added only
+  when merge confidence is enabled (disabled by default) — it updates as
+  issues are addressed and is removed when all are addressed.
 - **Staleness:** a review whose `commit_id` is older than HEAD is superseded —
   but a superseded review plus a passing cubic check on HEAD means the new
   code is clean, not that a review is missing. Judge pushes by the HEAD check
@@ -183,8 +197,9 @@ gh api graphql -f query='
   `pulls/comments`) reports `cubic-dev-ai[bot]`. Match `^cubic` rather than one
   exact string.
 - Inline comment bodies open with a hidden
-  `<!-- metadata:{"confidence":N} -->` line (confidence out of 10) before the
-  `P1:`-prefixed finding. Strip it before quoting a comment back.
+  `<!-- metadata:{"confidence":N} -->` line (observed in the wild, not
+  documented — do not cite a scale) before the
+  `P0:`/`P1:`-prefixed finding. Strip it before quoting a comment back.
 - To stop an in-flight run, use the **Cancel AI review** button in the Checks
   UI. Canceled and failed runs consume no reviewed lines.
 
@@ -197,9 +212,11 @@ gh api graphql -f query='
   cubic can become a persistent learning, so state the rule, not just the
   outcome — "done" or "thanks" is discarded. Every rejected item stays open,
   so reply and then resolve the thread yourself.
-- Priorities run P1 (highest) to P3. cubic's own auto-approval ladder treats
-  lower priorities as non-blocking, so read P3 as advisory: push back on it
-  explicitly rather than silently leaving it unaddressed.
+- Priorities run P0 (highest) to P3. By default every open issue blocks
+  auto-approval; only when `Allow open issues` is configured do lower
+  priorities become non-blocking (selecting a priority includes every lower
+  one). So read P3 as advisory only under such a policy — otherwise push back
+  on it explicitly rather than silently leaving it unaddressed.
 - Run the affected test files plus lint; run the repo's migration/model
   consistency check if models changed. Commit, push, then reply to each thread
   summarizing the fix and the test that now covers it.
@@ -228,7 +245,8 @@ cubic review --json | jq '.issues[]' # machine-readable; exits 1 when it finds i
 - Optional stronger models: `cubic auth connect codex` or
   `cubic auth connect claude-code` reuses your ChatGPT/Claude subscription
   instead of cubic's included model. Headless and CI runs need a personal
-  `CUBIC_API_KEY` (`cbk_...`) instead of the browser flow.
+  `CUBIC_API_KEY` (`cbk_...`) instead of the browser flow (CI key needs CLI
+  v1.12+; headless `repository_context` needs v1.14+).
 
 ## 5. Keep CI checks green
 
@@ -259,11 +277,16 @@ discounted automatically.
 | Trial | 20,000 |
 | Team | 40,000 |
 | Pro | 80,000 |
+| Max | 160,000 |
 
 - Free plan: 20 AI reviews per month, shared across the repos of your GitHub
-  org, resetting on the 1st. Review comments show what remains.
-- Public repos are free of charge against a separate public fair-use pool
-  aimed at abuse, not at normal OSS maintenance. If an open-source project is
+  org, resetting monthly on your own reset date (see Settings → Billing).
+  Review comments show what remains.
+- Public repos use a separate public fair-use pool for open-source work, not
+  normal OSS maintenance. On paid plans, public PRs from workspace members
+  count toward the team allowance; only external contributors use the separate
+  public allowance. Unpaid public repos use the public fair-use pool instead of
+  the free-plan review count. If an open-source project is
   blocked wrongly, email contact@cubic.dev with org, repo, and PR link.
 - On paid plans every active seat adds to one team-wide pool. Check
   **Settings → Usage** for the reset date and a breakdown by review type and
@@ -273,11 +296,12 @@ discounted automatically.
   runs count nothing. A manual request is never free: a repeated
   `review this PR` pays for the whole PR again, and cubic warns about this once
   it sees a manual re-review pattern on one PR.
-- Every review is capped at 50,000 reviewable lines. `max_changed_lines` only
-  lowers the automatic trigger, never the ceiling.
+- Every review is capped at 50,000 reviewable lines.
+  `reviews.ignore.max_changed_lines` only lowers the automatic trigger, never
+  the ceiling.
 - Flex capacity buys 10,000 extra lines for $20, only when a review would
   otherwise pause, bounded by the monthly spend limit in
-  **Settings → Subscription**.
+  **Settings → Billing** (breakdown in **Settings → Usage**).
 - Cut usage instead: ignore generated/test/fixture files, turn off automatic
   incremental reviews, and use the CLI while iterating. Nonprofits and schools
   get 50% off — ask support.
