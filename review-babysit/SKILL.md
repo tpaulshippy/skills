@@ -33,6 +33,15 @@ gh pr comment <PR> --body "@cubic-dev-ai incremental review"  # since last compl
   review.` — exactly the wasted comment in the screenshot. If you see that
   reply, you triggered unnecessarily: do not retry, just wait for the next
   push's automatic run.
+- **One run per PR at a time.** If you post any `@cubic-dev-ai` comment while
+  a run is still `in_progress`/`queued`, cubic replies `A review is already in
+  progress. Try again after it finishes.` and starts nothing. Before even
+  considering a last-resort manual trigger (section 7), poll the HEAD check
+  runs (section 2): if any cubic check has `status` `queued` or `in_progress`,
+  wait — do not comment. If you already got this reply, do not retry on a
+  timer: poll until that check is `completed`, then re-evaluate against the
+  last-resort criteria. Most sightings of this reply mean the push-triggered
+  automatic run was still working, not a stuck review.
 - `@cubic-dev-ai` on its own means a full review; `@cubic` works as a tag too.
   GitHub's @ mention autocomplete will not list it (Apps are excluded), so
   type the mention by hand — which is what `gh pr comment` does for you.
@@ -93,6 +102,13 @@ gh api repos/{owner}/{repo}/commits/$HEAD/check-runs \
   `commit_id` equals HEAD — it will never come. Do not post a manual trigger
   to "confirm" it — that is what produces the `There are no new changes to
   review` reply.
+- A `status` of `queued` or `in_progress` means the push-triggered run is
+  still working — wait and re-poll every 30–60s. Posting any `@cubic-dev-ai`
+  comment in this state is what produces the `A review is already in progress`
+  reply. Only judge stalled runs after ~10 minutes with no status change
+  (normal runs finish in minutes, `ultrareview` ~30 min): then use the
+  **Cancel AI review** button in the Checks UI and re-evaluate, rather than
+  stacking another comment.
 - A summary like `Found 5 issues across 2 files` means findings were posted —
   only then read the newest cubic review and the inline comments:
 
@@ -275,13 +291,15 @@ discounted automatically.
   all, and that silence is the pass signal, not a missing review. Wait at
   least 5 minutes before even considering that automatic review "did not
   run". Posting any `@cubic-dev-ai` comment during this window is what
-  produces the `There are no new changes to review` reply — never do it.
+  produces the `A review is already in progress` or `There are no new changes
+  to review` replies — never do it.
 - **Manual trigger is a last resort, once per PR at most, not once per
   cycle.** Post `incremental review` only when ALL of these hold: (a) no
-  cubic check run exists on HEAD after the wait, (b) you verified automatic
-  review was actually skipped — PR is a draft, reviews disabled,
+  cubic check run exists on HEAD after the wait, (b) no cubic check on HEAD
+  is `queued`/`in_progress` (an in-flight run fails the test — wait for it),
+  (c) you verified automatic review was actually skipped — PR is a draft, reviews disabled,
   branch/label/title/line ignore matched (section 1), or
-  `reviews.incremental_commits` is off — and (c) you pushed new commits since
+  `reviews.incremental_commits` is off — and (d) you pushed new commits since
   cubic's last completed review. A completed check on HEAD — clean or not —
   means review ran: never trigger on top of it.
 - Reserve a full `@cubic-dev-ai review this PR` for when the incremental
